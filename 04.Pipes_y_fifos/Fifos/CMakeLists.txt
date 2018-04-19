@@ -1,0 +1,14 @@
+set(SOURCE
+        ${SOURCE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/Fifo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/FifoEscritura.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/FifoLectura.cpp
+        PARENT_SCOPE
+        )
+set(HEADERS
+        ${HEADERS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/Fifo.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/FifoEscritura.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/FifoLectura.h
+        PARENT_SCOPE
+        )
