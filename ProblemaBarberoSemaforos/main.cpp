@@ -15,7 +15,7 @@ union semnum{
 };
 
 
-int getSem(const char* path, int val, char id);
+int getSem(const char* path, int val);
 
 void p(int idSem);
 
@@ -23,8 +23,8 @@ void v(int idSem);
 
 int main() {
     std::cout << "Problema del barbero" << std::endl;
-    int idSemHayBarbero = getSem("/bin/bash",1, 'a');
-    int idSemHayCliente = getSem("/bin/ls",0, 'b');
+    int idSemHayBarbero = getSem("/bin/bash",1);
+    int idSemHayCliente = getSem("/bin/ls",0);
     std::cout << "Sem barbero "<<idSemHayBarbero << std::endl;
     std::cout << "Sem Cliente "<<idSemHayCliente << std::endl;
     int hijo[11];
@@ -92,7 +92,7 @@ void p(int idSem) {
     }
 }
 
-int getSem(const char *path, int val, char id) {// creo identificador del conjunto de semaforos.
+int getSem(const char *path, int val) {// creo identificador del conjunto de semaforos.
     key_t key = ftok(path, 'a');
     int idSem = semget(key, 1,0666|IPC_CREAT);
     if (idSem != -1) {
