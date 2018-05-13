@@ -4,7 +4,7 @@ project(04_Pipes_y_fifos)
 set(CMAKE_CXX_STANDARD 11)
 
 set(SOURCE
-        ${CMAKE_CURRENT_SOURCE_DIR}/main3.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/main1.cpp
     )
 
 add_subdirectory("${PROJECT_SOURCE_DIR}/Fifos")
