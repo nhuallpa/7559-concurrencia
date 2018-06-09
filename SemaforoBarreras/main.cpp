@@ -7,6 +7,8 @@
 #include <cstring>
 #include <unistd.h>
 #include <wait.h>
+#include <sys/shm.h>
+
 using namespace std;
 
 void initSem(int idSem, int val) {
@@ -25,8 +27,8 @@ void initSem(int idSem, int val) {
 
 
 
-int getSem(const char * archivo, int valor) {
-    key_t key = ftok(archivo, 'a');
+int getSem(const char * archivo, int valor, int proj) {
+    key_t key = ftok(archivo, proj);
     int idSem = semget(key, 1, 0777 | IPC_CREAT | IPC_EXCL);
     if (idSem == -1) {
         std::cout<<strerror(errno)<<std::endl;
@@ -36,7 +38,8 @@ int getSem(const char * archivo, int valor) {
 }
 
 int mirandom() {
-    return 1;
+    srand(time(NULL)+getpid());
+    return rand() % 100 + 1;
 }
 
 void p(int idSem){
@@ -55,7 +58,7 @@ void v(int idSem){
     semop(idSem, &buf, 1);
 }
 
-void barrera(int idSem){
+void w(int idSem){
     struct sembuf buf;
     buf.sem_op = 0;
     buf.sem_num = 0;
@@ -67,43 +70,58 @@ int deleteSem(int idSem) {
     return semctl(idSem, 0, IPC_RMID);
 }
 
-void calcularAtaque() {
+int calcularAtaque(int* valores, int i) {
+    int perdi=0;
+    for (int k=0; k < 4; k++) {
+        if (i != k && valores[i] < valores[k]) {
+            perdi = 1;
+            break;
+        }
+    }
+    return perdi;
+}
 
+int getMem(const char * archivo, int valor, int proj) {
+    int* valores;
+    key_t key = ftok("/bin/mv", 0);
+    int shmid = shmget(key, sizeof(int)*4, 0666|IPC_CREAT|IPC_EXCL);
+    return shmid;
 }
 
 int main() {
-    int idAtaque = getSem("/bin/bash", 4);
-    int idRonda = getSem("/bin/ls", 4);
-    int idInicializacion = getSem("/bin/cat", 4);
 
+    int shmid = getMem("/bin/mv", 4, 'c');
+    int* valores = (int*)shmat(shmid, NULL, 0);
+
+    int idAtaque = getSem("/bin/bash", 4, 'a');
+    int idRonda = getSem("/bin/ls", 0, 'b');
     int cantRondas = 3;
 
-    int i=1;
-    for (i=1; i <= 4; i++) {
+    int i=0;
+    for (i=0; i < 4; i++) {
         pid_t pid = fork();
         if (pid == 0) {
-            for (int i=0 ; i<cantRondas; i++) {
-                int valor = mirandom();
+            int perdi = 0;
+            for (int j=0 ; j<cantRondas; j++) {
 
-
+                //valores[i] = (perdi)?0:mirandom();
+                valores[i] = mirandom();
                 p(idAtaque);
-                barrera(idAtaque);
-                cout<<getpid()<<":Ataquen"<<endl;
-                initSem(idInicializacion, 4);
-
-                calcularAtaque();
-
+                v(idRonda);
+                w(idAtaque);
+                cout<<getpid()<<":Ataco con: "<<valores[i]<<endl;
+                perdi = calcularAtaque(valores, i);
+                /*if (perdi) {
+                    cout<<getpid()<<":No juega mas"<<endl;
+                }*/
                 p(idRonda);
-                barrera(idRonda);
+                v(idAtaque);
+                w(idRonda);
                 cout<<getpid()<<":Siguiente Ronda"<<endl;
 
-
-                initSem(idAtaque, 4);
-                p(idInicializacion);
-                barrera(idInicializacion);
-                cout<<getpid()<<":Inicializamos"<<endl;
-                initSem(idRonda, 4);
-
+            }
+            if (shmdt(valores) == -1) {
+                cout<<strerror(errno)<<endl;
             }
             exit(0);
         }
@@ -114,6 +132,12 @@ int main() {
     }
     deleteSem(idAtaque);
     deleteSem(idRonda);
-    deleteSem(idInicializacion);
+
+    if (shmdt(valores) == -1) {
+        cout<<strerror(errno)<<endl;
+    }
+
+    shmctl(shmid, IPC_RMID, NULL);
+
     return 0;
 }
