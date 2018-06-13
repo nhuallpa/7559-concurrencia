@@ -95,7 +95,8 @@ int main() {
 
     int idAtaque = getSem("/bin/bash", 4, 'a');
     int idRonda = getSem("/bin/ls", 0, 'b');
-    int cantRondas = 3;
+    int idReset = getSem("/bin/cp", 4, 'b');
+    int cantRondas = 100;
 
     int i=0;
     for (i=0; i < 4; i++) {
@@ -106,17 +107,23 @@ int main() {
 
                 //valores[i] = (perdi)?0:mirandom();
                 valores[i] = mirandom();
+
                 p(idAtaque);
-                v(idRonda);
                 w(idAtaque);
+                v(idRonda);
                 cout<<getpid()<<":Ataco con: "<<valores[i]<<endl;
                 perdi = calcularAtaque(valores, i);
                 /*if (perdi) {
                     cout<<getpid()<<":No juega mas"<<endl;
                 }*/
-                p(idRonda);
+
+                p(idReset);
+                w(idReset);
                 v(idAtaque);
+
+                p(idRonda);
                 w(idRonda);
+                v(idReset);
                 cout<<getpid()<<":Siguiente Ronda"<<endl;
 
             }
@@ -132,6 +139,7 @@ int main() {
     }
     deleteSem(idAtaque);
     deleteSem(idRonda);
+    deleteSem(idReset);
 
     if (shmdt(valores) == -1) {
         cout<<strerror(errno)<<endl;
