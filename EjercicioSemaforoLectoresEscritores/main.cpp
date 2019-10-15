@@ -1,0 +1,177 @@
+#include <iostream>
+#include <sys/ipc.h>
+#include <sys/types.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <string>
+#include <cstring>
+#include <vector>
+
+using std::string;
+using std::vector;
+
+int getSem(string path, int valor);
+int getMemInt(string path);
+int* atacharInt(int idMem);
+void waitSem(int semid);
+void signalSem(int semid);
+int deleteMemInt(int idMem);
+int detacharInt(int* idMem);
+int deleteSem(int semid);
+
+int main() {
+
+    const int CANT_LECTORES = 4;
+    const int CATN_ESCRITORES = 2;
+    vector<int> pidsHijos;
+
+    int idMem = getMemInt("/bin/ls");
+    int mutex = getSem("/bin/vm", 1);
+    int roomEmpty = getSem("/bin/cp", 1);
+    int* lectoresIniciales = atacharInt(idMem);
+    *lectoresIniciales = 0;
+
+    // Lectores
+    for (int i=0; i<CANT_LECTORES; ++i) {
+        pid_t pid = fork();
+        if (pid == 0) {
+            int* cantLectores = atacharInt(idMem);
+            for (int j = 0; j < 10; ++j) {
+
+                waitSem(mutex);
+                *cantLectores+=1;
+                if (*cantLectores == 1) waitSem(roomEmpty);
+                signalSem(mutex);
+
+                std::cout << "Leer desde el proceso " << getpid()<< std::endl;
+
+                waitSem(mutex);
+                *cantLectores-=1;
+                if (*cantLectores == 0) signalSem(roomEmpty);
+                signalSem(mutex);
+            }
+
+            detacharInt(cantLectores);
+            exit(0);
+        } else {
+            pidsHijos.push_back(pid);
+        }
+    }
+
+    // Escritores
+    for (int i=0; i<CATN_ESCRITORES; ++i) {
+        pid_t pid = fork();
+        if (pid == 0) {
+
+            for (int j = 0; j < 10; ++j) {
+                waitSem(roomEmpty);
+                std::cout << "Escribir desde el proceso " << getpid()<< std::endl;
+                signalSem(roomEmpty);
+            }
+
+            exit(0);
+        } else {
+            pidsHijos.push_back(pid);
+        }
+    }
+
+    for (vector<int>::iterator it = pidsHijos.begin(); it != pidsHijos.end(); ++it) {
+        int wsstatus;
+        waitpid(*it, &wsstatus, WUNTRACED | WCONTINUED);
+    }
+
+
+    detacharInt(lectoresIniciales);
+    deleteMemInt(idMem);
+    deleteSem(roomEmpty);
+    deleteSem(mutex);
+    return 0;
+}
+
+int getMemInt(string path) {
+    key_t key = ftok(path.c_str(), 'a');
+    int memId = shmget(key, sizeof(int), IPC_CREAT | 0644);
+    if (memId == -1) {
+        std::cout<<"error shmget:"<<strerror(errno)<<std::endl;
+    }
+    return memId;
+}
+
+int* atacharInt(int idMem) {
+    void* mem = shmat(idMem, NULL, 0);
+    if (mem == (void *) -1) {
+        std::cout<<"error shmat:"<<strerror(errno)<<std::endl;
+    }
+    return (int *) mem;
+}
+
+int detacharInt(int* mem) {
+    int status = shmdt((void *) mem);
+    if (status == -1) {
+        std::cout<<"error shmdt:"<<strerror(errno)<<std::endl;
+    }
+    return status;
+}
+
+int deleteMemInt(int idMem) {
+    int status = shmctl(idMem, IPC_RMID, NULL);
+    if (status == -1) {
+        std::cout<<"error shmctl:"<<strerror(errno)<<std::endl;
+    }
+    return status;
+}
+
+int deleteSem(int semid) {
+    int status = semctl(semid, 0, IPC_RMID);
+    if (status == -1) {
+        std::cout<<"error semctl:"<<strerror(errno)<<std::endl;
+    }
+    return status;
+}
+
+int getSem(string path, int valor) {
+    key_t key = ftok(path.c_str(), 6);
+    int idsem = semget(key, 1, 0666 | IPC_CREAT);
+    if (idsem != -1) {
+        union semun {
+            int val;
+            struct semid_ds *buf;
+            unsigned short *array;
+            struct seminfo *__buff;
+        };
+
+        semun init;
+        init.val = valor;
+        int status = semctl(idsem, 0, SETVAL, init);
+        if (status == -1) {std::cout<<"error semctl:"<<strerror(errno)<<std::endl;}
+    } else {
+        std::cout<<"error semget:"<<strerror(errno)<<std::endl;
+    }
+    return idsem;
+}
+
+void waitSem(int semid) {
+
+    struct sembuf oper;
+    oper.sem_num = 0;
+    oper.sem_op = -1;
+    oper.sem_flg = SEM_UNDO;
+
+    int status = semop(semid, &oper, 1);
+    if (status == -1) {std::cout<<"error wait:"<<strerror(errno)<<std::endl;}
+}
+
+void signalSem(int semid) {
+
+    struct sembuf oper;
+    oper.sem_num = 0;
+    oper.sem_op = 1;
+    oper.sem_flg = SEM_UNDO;
+
+    int status = semop(semid, &oper, 1);
+    if (status == -1) {std::cout<<"error signal:"<<strerror(errno)<<std::endl;}
+
+}
