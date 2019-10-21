@@ -11,6 +11,12 @@
 
 using namespace std;
 
+void assertStatus(int code, string msg) {
+    if (code == -1) {
+        std::cout<<msg<<":"<<strerror(errno)<<std::endl;
+    }
+}
+
 void initSem(int idSem, int val) {
     union semun {
         int val;
@@ -20,9 +26,7 @@ void initSem(int idSem, int val) {
     semun init;
     init.val = val;
     int code = semctl(idSem, 0, SETVAL, init);
-    if (code == -1) {
-        std::cout<<strerror(errno)<<std::endl;
-    }
+    assertStatus(code, "semctl");
 }
 
 
@@ -30,9 +34,7 @@ void initSem(int idSem, int val) {
 int getSem(const char * archivo, int valor, int proj) {
     key_t key = ftok(archivo, proj);
     int idSem = semget(key, 1, 0777 | IPC_CREAT | IPC_EXCL);
-    if (idSem == -1) {
-        std::cout<<strerror(errno)<<std::endl;
-    }
+    assertStatus(idSem, "semget");
     initSem(idSem, valor);
     return idSem;
 }
@@ -47,7 +49,9 @@ void p(int idSem){
     buf.sem_op = -1;
     buf.sem_num = 0;
     buf.sem_flg = SEM_UNDO;
-    semop(idSem, &buf, 1);
+    int status = semop(idSem, &buf, 1);
+    assertStatus(status, "semop");
+
 }
 
 void v(int idSem){
@@ -55,7 +59,8 @@ void v(int idSem){
     buf.sem_op = 1;
     buf.sem_num = 0;
     buf.sem_flg = SEM_UNDO;
-    semop(idSem, &buf, 1);
+    int status = semop(idSem, &buf, 1);
+    assertStatus(status, "semop");
 }
 
 void w(int idSem){
@@ -63,7 +68,8 @@ void w(int idSem){
     buf.sem_op = 0;
     buf.sem_num = 0;
     buf.sem_flg = 0;
-    semop(idSem, &buf, 1);
+    int status = semop(idSem, &buf, 1);
+    assertStatus(status, "semop");
 }
 
 int deleteSem(int idSem) {
@@ -85,11 +91,12 @@ int getMem(const char * archivo, int valor, int proj) {
     int* valores;
     key_t key = ftok("/bin/mv", 0);
     int shmid = shmget(key, sizeof(int)*4, 0666|IPC_CREAT|IPC_EXCL);
+    assertStatus(shmid, "shmget");
+
     return shmid;
 }
 
-int main() {
-
+void intentoTresSemaforos() {
     int shmid = getMem("/bin/mv", 4, 'c');
     int* valores = (int*)shmat(shmid, NULL, 0);
 
@@ -147,5 +154,65 @@ int main() {
 
     shmctl(shmid, IPC_RMID, NULL);
 
+}
+
+void intentoDosSemaforos() {
+    int shmid = getMem("/bin/mv", 4, 'c');
+    int* valores = (int*)shmat(shmid, NULL, 0);
+
+    int idAtaque = getSem("/bin/bash", 4, 'a');
+    int idRonda = getSem("/bin/ls", 4, 'b');
+    int cantRondas = 100;
+
+    int i=0;
+    for (i=0; i < 4; i++) {
+        pid_t pid = fork();
+        if (pid == 0) {
+            int perdi = 0;
+            for (int j=0 ; j<cantRondas; j++) {
+
+                //valores[i] = (perdi)?0:mirandom();
+                valores[i] = mirandom();
+
+                p(idAtaque);
+                w(idAtaque);
+                cout<<getpid()<<":Ataco con: "<<valores[i]<<endl;
+                perdi = calcularAtaque(valores, i);
+                /*if (perdi) {
+                    cout<<getpid()<<":No juega mas"<<endl;
+                }*/
+
+                p(idRonda);
+                w(idRonda);
+
+                v(idAtaque);
+                v(idRonda);
+                cout<<getpid()<<":Siguiente Ronda"<<endl;
+
+            }
+            if (shmdt(valores) == -1) {
+                cout<<strerror(errno)<<endl;
+            }
+            exit(0);
+        }
+    }
+    int j;
+    for (j=0; j<4; j++) {
+        wait(NULL);
+    }
+    deleteSem(idAtaque);
+    deleteSem(idRonda);
+
+    if (shmdt(valores) == -1) {
+        cout<<strerror(errno)<<endl;
+    }
+
+    shmctl(shmid, IPC_RMID, NULL);
+
+}
+
+int main() {
+
+    intentoTresSemaforos();
     return 0;
 }
